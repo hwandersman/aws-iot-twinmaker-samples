@@ -1,8 +1,8 @@
 import { SceneFactoryImpl } from "../../factory/scene_factory_impl";
 import { EmptyNode } from "../../node/empty_node";
-import { parseArgs, parseCsv, processBuildingTransforms } from "./sample_utils";
+import { parseArgs, parseJSON, processBuildingTransforms } from "./sample_utils";
 
-const { workspaceId, sceneId, assetDir, assetCsv } = parseArgs();
+const { workspaceId, sceneId, assetDir, buildingJson } = parseArgs();
 
 const factory = new SceneFactoryImpl();
 
@@ -18,8 +18,8 @@ factory.loadOrCreateSceneIfNotExists(workspaceId, sceneId).then(async (twinMaker
     // Set the Environmental Preset in the Scene settings
     twinMakerScene.setEnviromentPreset('neutral');
 
-    const csvResult = parseCsv(assetCsv);
-    const modelRefNodes = processBuildingTransforms(assetDir, csvResult);
+    const jsonResult = parseJSON(buildingJson);
+    const modelRefNodes = processBuildingTransforms(assetDir, jsonResult);
 
     for (const node of modelRefNodes) {
         rootNode.addChildNode(node);

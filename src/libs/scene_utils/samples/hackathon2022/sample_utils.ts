@@ -5,7 +5,6 @@ import { readdirSync, readFileSync } from 'fs';
 import minimist from 'minimist';
 import { ModelRefNode } from '../../node/model.ts/model_ref';
 import { withTrailingSlash } from '../../utils/file_utils';
-import { parse } from 'csv-parse/sync';
 import { ModelType } from '../../utils/types';
 import * as path from 'path';
 
@@ -13,7 +12,7 @@ export interface CookieFactorySampleArguments {
   workspaceId: string;
   sceneId: string;
   assetDir: string;
-  assetCsv: string;
+  buildingJson: string;
 }
 
 export const help = () => {
@@ -26,13 +25,13 @@ export const help = () => {
   Usage: 
     
     arguments:
-      --workspaceId REQUIRED
-      --sceneId     REQUIRED
-      --assetDir    REQUIRED
-      --assetCsv    REQUIRED            
+      --workspaceId         REQUIRED
+      --sceneId             REQUIRED
+      --assetDir            REQUIRED
+      --buildingJson    REQUIRED            
     
     CookieFactory sample:
-      npx ts-node city_sample1.ts --workspaceId CookieFactory --sceneId FactoryScene --assetDir [ASSET_PATH] --assetCsv [ASSET_CSV_PATH]
+      npx ts-node city_sample1.ts --workspaceId CookieFactory --sceneId FactoryScene --assetDir [ASSET_PATH] --buildingDataJSON [BUILDING_JSON_PATH]
     `);
 };
 
@@ -42,7 +41,7 @@ export const parseArgs = (): CookieFactorySampleArguments => {
     workspaceId: '',
     sceneId: '',
     assetDir: '',
-    assetCsv: '',
+    buildingJson: '',
   };
   const parsedArgs = minimist(process.argv.slice(2));
   for (const arg of Object.keys(parsedArgs)) {
@@ -61,8 +60,8 @@ export const parseArgs = (): CookieFactorySampleArguments => {
         const assetDir = parsedArgs[arg] as string;
         args.assetDir = withTrailingSlash(assetDir);
         break;
-      case 'assetCsv':
-        args.assetCsv = parsedArgs[arg];
+      case 'buildingJson':
+        args.buildingJson = parsedArgs[arg];
         break;
       case '_':
         break;
@@ -73,7 +72,7 @@ export const parseArgs = (): CookieFactorySampleArguments => {
     }
   }
 
-  if (args.workspaceId === '' || args.sceneId === '' || args.assetDir === '' || args.assetCsv === '') {
+  if (args.workspaceId === '' || args.sceneId === '' || args.assetDir === '' || args.buildingJson === '') {
     help();
     process.exit(1);
   }
@@ -86,46 +85,28 @@ export const assetToModelRef = (assetPath: string, nodeName?: string): ModelRefN
   return new ModelRefNode(nodeName ?? fileParse.name, fileParse.base, fileParse.ext.slice(1).toUpperCase() as ModelType);
 };
 
-// Parse Building CSV
-type BuildingTransform = {
-  buffer_index: number;
-  building_index: number;
-  mesh: string;
-  x: number;
-  y: number;
-  z: number;
-  rotation: number;
+// Parse Building JSON
+type BuildingData = {
+  BuildIndex: number;
+  BufferIndex: number;
+  MeshFilename: string;
+  PositionX: number;
+  PositionY: number;
+  PositionZ: number;
+  Angle: number;
+  Problems: string;
+  CitizenUnits: any;
 };
 
 // Load bulk transforms of assets from a CSV
-export const parseCsv = (filePath: string): BuildingTransform[] => {
-  const headers = ['buffer_index', 'building_index', 'mesh', 'x', 'y', 'z', 'rotation'];
-  const fileContent = readFileSync(filePath, { encoding: 'utf-8' });
+export const parseJSON = (filePath: string): BuildingData[] => {
+  const fileJSON = readFileSync(filePath, { encoding: 'utf-8' });
 
-  const content = parse(fileContent, {
-    delimiter: ',',
-    columns: headers,
-  });
-
-  // Ensure values are numbers
-  const transforms: BuildingTransform[] = [];
-  for (const row of content) {
-    const transform: BuildingTransform = {
-      buffer_index: +row.buffer_index,
-      building_index: +row.building_index,
-      mesh: row.mesh,
-      x: +row.x,
-      y: +row.y,
-      z: +row.z,
-      rotation: +row.rotation,
-    };
-    transforms.push(transform);
-  }
-  return transforms;
+  return JSON.parse(fileJSON) as BuildingData[];
 };
 
 // Set transform of a Building asset
-export const processBuildingTransforms = (assetDir: string, content: BuildingTransform[]): ModelRefNode[] => {
+export const processBuildingTransforms = (assetDir: string, content: BuildingData[]): ModelRefNode[] => {
   const files: string[] = readdirSync(assetDir);
 
   // Used to get the GLTF or GLB file that was converted from the source OBJ
@@ -136,8 +117,8 @@ export const processBuildingTransforms = (assetDir: string, content: BuildingTra
   }
 
   const nodes: ModelRefNode[] = [];
-  for (const row of content.slice(1)) {
-    const fileName = path.parse(row.mesh).name;
+  for (const row of content) {
+    const fileName = path.parse(row.MeshFilename).name;
     const glFileName = fileNameMap[fileName];
     const buildingAssetFile = `${assetDir}${glFileName}`;
     const buildingRefNode: ModelRefNode = assetToModelRef(buildingAssetFile);
@@ -145,7 +126,7 @@ export const processBuildingTransforms = (assetDir: string, content: BuildingTra
     buildingRefNode.uploadModelFromLocalIfNotExist(buildingAssetFile);
 
     buildingRefNode
-      .withPosition({ x: row.x, y: row.y, z: row.z })
+      .withPosition({ x: row.PositionX, y: row.PositionY, z: row.PositionZ })
       .withRotation({ x: 0, y: 0, z: 0})
       .withScale({ x: 1, y: 1, z: 1 });
 
